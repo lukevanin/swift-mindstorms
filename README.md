@@ -23,6 +23,22 @@ Some areas where contributions are appreciated:
 - Use: use this code in your projects. Tell us how it went, good or bad.
 - Official support: *Kindly* petition LEGO® group to publish the communications protocol used by hub. The specification will be immensely valuable to the community of hobbyists and product developers at large, and reduce time and effort required to work with the hub.
 
+## Installation
+
+Install this as a standard Swift Package.
+
+In Xcode:
+
+1. Click File -> Swift Packages -> Add Package Dependency.
+2. Enter the URL for the git repository: https://github.com/lukevanin/swift-mindstorms.
+3. Click Next.
+4. Chose Branch, and make sure the branch is set to *main*. 
+5. Click Next.
+6. Select the application target where the package should be added.
+7. Click Finish.
+
+Wait for the package to be downloaded and installed.
+
 ## Getting started
 
 [TODO]
@@ -39,14 +55,19 @@ The easiest way to get started is to use the `Robot` class for general purpose a
 
 To use the Robot:
 
-1. Instantiate the `Robot` or `TankRobot` class, passing in a `Hub` instance:
+1. Import the framework:
+```
+import SwiftMindstorms
+```
+
+2. Instantiate the `Robot` or `TankRobot` class, passing in a `Hub` instance:
 ```
 let bluetoothConnection = BluetoothConnection()
 let hub = hub(connection: bluetoothConnection)
 let robot = Robot(hub: hub)
 ```
 
-2. Connect the hub and wait for the connection status to change to `connected`:
+3. Connect the hub and wait for the connection status to change to `connected`:
 ```
 hub.status.sink { status in 
     switch status {
@@ -60,7 +81,7 @@ hub.status.sink { status in
 .store(in: &cancellables)
 ```
 
-3. Send a command to the robot and wait for the response:
+4. Send a command to the robot and wait for the response:
 ```
 robot.motorGoDirectionToPosition(
     port: .A,
