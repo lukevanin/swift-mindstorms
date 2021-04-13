@@ -35,11 +35,11 @@ This code allows three ways to interact with the hub, from highest level to lowe
 
 ### 1. Robots
 
-The easiest way to get started is to use the `Robot` class for general purpose applications, or the `TankRobot` which is specifically for vehicles with two wheels using tank steering (wheels turn in opposite directions to steer the vehicle).
+The easiest way to get started is to use the `Robot` class for general purpose applications. Use the `TankRobot` vehicles designed to use tank steering, that is, wheels which turn in opposite directions to steer the vehicle.
 
 To use the Robot:
 
-1. Instantiate the Robot class, passing in a `Hub` instance:
+1. Instantiate the `Robot` or `TankRobot` class, passing in a `Hub` instance:
 ```
 let bluetoothConnection = BluetoothConnection()
 let hub = hub(connection: bluetoothConnection)
