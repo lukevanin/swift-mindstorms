@@ -36,7 +36,7 @@ public class TankRobot: Robot {
         super.init(orientation: orientation, hub: hub)
     }
 
-    public func movePair(
+    public func moveStartSpeeds(
         lhsSpeed: Int,
         rhsSpeed: Int,
         completion: @escaping Completion
@@ -52,10 +52,11 @@ public class TankRobot: Robot {
         )
     }
 
-    public func movePair(
-        units: Int,
+    public func moveUnits(
+        units: Int, // 1 unit = approx. 100mm
         lhsSpeed: Int,
         rhsSpeed: Int,
+        stop: Int = 1,
         completion: @escaping Completion
     ) {
         enqueue(
@@ -64,7 +65,48 @@ public class TankRobot: Robot {
                 lspeed: configuration.speed * lhsSpeed,
                 rspeed: configuration.speed * rhsSpeed,
                 lmotor: configuration.lhsMotorPort,
-                rmotor: configuration.rhsMotorPort
+                rmotor: configuration.rhsMotorPort,
+                stop: stop
+            ),
+            completion: completion
+        )
+    }
+
+    public func moveTankDegrees(
+        degrees: Int,
+        lhsSpeed: Int,
+        rhsSpeed: Int,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MoveTankDegrees(
+                degrees: degrees,
+                lspeed: configuration.speed * lhsSpeed,
+                rspeed: configuration.speed * rhsSpeed,
+                lmotor: configuration.lhsMotorPort,
+                rmotor: configuration.rhsMotorPort,
+                stop: stop
+            ),
+            completion: completion
+        )
+    }
+
+    public func moveTankTime(
+        time: Int,
+        lhsSpeed: Int,
+        rhsSpeed: Int,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MoveTankTime(
+                time: time,
+                lspeed: lhsSpeed,
+                rspeed: rhsSpeed,
+                lmotor: configuration.lhsMotorPort,
+                rmotor: configuration.rhsMotorPort,
+                stop: stop
             ),
             completion: completion
         )

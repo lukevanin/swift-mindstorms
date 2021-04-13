@@ -90,10 +90,25 @@ extension Robot {
 
 extension Robot {
     
-    public func display(image: Bitmap, completion: @escaping Completion) {
+    public func display(
+        image: Bitmap,
+        completion: @escaping Completion
+    ) {
         enqueue(
             request: DisplayImage(
                 image: image.oriented(to: orientation)
+            ),
+            completion: completion
+        )
+    }
+    
+    public func centerButtonLights(
+        color: Hue,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: CenterButtonLights(
+                color: color
             ),
             completion: completion
         )
@@ -120,6 +135,125 @@ extension Robot {
                 direction: direction,
                 speed: speed,
                 stall: stall,
+                stop: stop
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorGoToRelativePosition(
+        port: MotorPort,
+        position: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorGoToRelativePosition(
+                port: port,
+                position: position,
+                speed: speed,
+                stall: stall
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorPWM(
+        port: MotorPort,
+        power: Int,
+        stall: Bool,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorPWM(
+                port: port,
+                power: power,
+                stall: stall
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorRunForDegrees(
+        port: MotorPort,
+        degrees: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorRunForDegrees(
+                port: port,
+                degrees: degrees,
+                speed: speed,
+                stall: stall,
+                stop: stop
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorRunTimed(
+        port: MotorPort,
+        time: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorRunTimed(
+                port: port,
+                time: time,
+                speed: speed,
+                stall: stall,
+                stop: stop
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorSetPosition(
+        port: MotorPort,
+        offset: Int,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorSetPosition(
+                port: port,
+                offset: offset
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorStart(
+        port: MotorPort,
+        speed: Int,
+        stall: Bool,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorStart(
+                port: port,
+                speed: speed,
+                stall: stall
+            ),
+            completion: completion
+        )
+    }
+    
+    public func motorStop(
+        port: MotorPort,
+        stop: Int = 1,
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: MotorStop(
+                port: port,
                 stop: stop
             ),
             completion: completion
