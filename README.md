@@ -41,8 +41,25 @@ Wait for the package to be downloaded and installed.
 
 ## Getting started
 
-[TODO]
+### Setup:
 
+Add `NSBluetoothAlwaysUsageDescription` and `UISupportedExternalAccessoryProtocols` to your `Info.plist`. See below:
+
+```
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Allow this application to use Bluetooth to connect to your Lego® Mindstorms® programmable brick</string>
+    <key>UISupportedExternalAccessoryProtocols</key>
+    <array>
+        <string>com.lego.les</string>
+    </array>
+```
+
+_Scene based apps: The system Bluetooth MiFi connection dialog does not work with scene based apps, including apps that use UIKit with `SceneDelegate` or SwiftUI apps that use an `App` view. Only `UIWindow` based apps will work._
+
+Something else to look out for - the iOS Bluetooth connect dialog does seem to work reliably using a Scene Delegate or SwiftUI Scene based application. Make sure to use a UIWindow based application.
+
+* Sorry for the late response I was not expecting any activity on this 😂
+* Yes I will add CocoaPods
 This code allows three ways to interact with the hub, from highest level to lowest: 
 
 1. Use `Robot` or `TankRobot` APIs. These APIs provide a convenient interface to connect to the hub, enqueue commands to be executed, and receive status updates for each notification. This allows the least amount of customization.  
