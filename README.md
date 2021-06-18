@@ -56,10 +56,6 @@ Add `NSBluetoothAlwaysUsageDescription` and `UISupportedExternalAccessoryProtoco
 
 _Scene based apps: The system Bluetooth MiFi connection dialog does not work with scene based apps, including apps that use UIKit with `SceneDelegate` or SwiftUI apps that use an `App` view. Only `UIWindow` based apps will work._
 
-Something else to look out for - the iOS Bluetooth connect dialog does seem to work reliably using a Scene Delegate or SwiftUI Scene based application. Make sure to use a UIWindow based application.
-
-* Sorry for the late response I was not expecting any activity on this 😂
-* Yes I will add CocoaPods
 This code allows three ways to interact with the hub, from highest level to lowest: 
 
 1. Use `Robot` or `TankRobot` APIs. These APIs provide a convenient interface to connect to the hub, enqueue commands to be executed, and receive status updates for each notification. This allows the least amount of customization.  
@@ -127,6 +123,7 @@ This is a non-exhaustive list of the intended code changes.
 1. Return Combine `Future` from `Robot` and `TankRobot` methods, instead of using completions. Use async/awat when that becomes available.
 2. Include better error descriptions in `Robot` completion result, instead of boolean success/failure.
 3. Use type-safe units for command parameters (e.g. `Measurement<UnitAngle>`) instead of primitives.
+4. Add support for CocoaPods.
 
 ## Acknowledgements
 
