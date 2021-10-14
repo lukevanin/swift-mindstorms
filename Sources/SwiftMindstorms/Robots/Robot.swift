@@ -113,6 +113,20 @@ extension Robot {
             completion: completion
         )
     }
+    
+    public func ultrasonicLights(
+        port: MotorPort,
+        lights: (Int, Int, Int, Int),
+        completion: @escaping Completion
+    ) {
+        enqueue(
+            request: UltrasonicLightUp(
+                port: port,
+                lights: [lights.0, lights.1, lights.2, lights.3]
+            ),
+            completion: completion
+        )
+    }
 }
 
 // MARK: Motos

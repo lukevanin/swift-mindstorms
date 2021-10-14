@@ -97,17 +97,24 @@ public enum Event {
                         )
                     }
                 case .color:
-                    ports[port] = .color(
-                        ColorSensor(
-                            reflected: field.values[0] ?? 0,
-                            name: field.values[1].flatMap { Hue(rawValue: $0) },
-                            rgb: RGB(
-                                r: field.values[2] ?? 0,
-                                g: field.values[3] ?? 0,
-                                b: field.values[4] ?? 0
+                    if field.values.count == 5 {
+                        ports[port] = .color(
+                            ColorSensor(
+                                reflected: field.values[0] ?? 0,
+                                name: field.values[1].flatMap { Hue(rawValue: $0) },
+                                rgb: RGB(
+                                    r: field.values[2] ?? 0,
+                                    g: field.values[3] ?? 0,
+                                    b: field.values[4] ?? 0
+                                )
                             )
                         )
-                    )
+                    }
+                    else {
+                        ports[port] = .color(
+                            ColorSensor(reflected: 0, name: nil, rgb: RGB(r: 0, g: 0, b: 0))
+                        )
+                    }
                 case .ultrasonic:
                     ports[port] = .ultrasonic(
                         UltrasonicSensor(
