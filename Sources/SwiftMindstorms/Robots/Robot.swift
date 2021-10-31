@@ -14,7 +14,8 @@ public class Robot {
     public typealias Completion = (_ success: Bool) -> Void
     
     public let connectionStatus = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
-    
+    public let events = PassthroughSubject<Event, Never>()
+
     private var completions = [String : Completion]()
     private var cancellables = Set<AnyCancellable>()
     
@@ -58,7 +59,7 @@ public class Robot {
                 }
             }
         default:
-            break
+            events.send(event)
         }
     }
 
