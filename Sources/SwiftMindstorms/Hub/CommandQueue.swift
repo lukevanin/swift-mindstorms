@@ -19,7 +19,6 @@ final class CommandQueue {
     }
     
     @discardableResult public func enqueue(request: AnyRequest) async throws -> String {
-        dispatchPrecondition(condition: .onQueue(.main))
         let command = Command(p: request)
         var data = try encoder.encode(command)
         data.append(0x0d) // \r

@@ -9,42 +9,112 @@ import Foundation
 import Combine
 
 
-public class Robot {
+public protocol IRobot {
+    func execute(request: IRequest) async throws
+    func events() async -> AsyncStream<Event>
+
+    // MARK: Display
+
+    func display(image: Bitmap) async throws
+    func centerButtonLights(color: Hue) async throws
+    func ultrasonicLights(port: MotorPort, lights: (Int, Int, Int, Int)) async throws
+
+    // MARK: Motors
+
+    func motorGoDirectionToPosition(
+        port: MotorPort,
+        position: Int,
+        direction: MotorDirection,
+        speed: Int,
+        stall: Bool,
+        stop: Int
+    ) async throws
+
+    func motorGoToRelativePosition(
+        port: MotorPort,
+        position: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int
+    ) async throws
+
+    func motorPWM(
+        port: MotorPort,
+        power: Int,
+        stall: Bool
+    ) async throws
+
+    func motorRunForDegrees(
+        port: MotorPort,
+        degrees: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int
+    ) async throws
+
+    func motorRunTimed(
+        port: MotorPort,
+        time: Int,
+        speed: Int,
+        stall: Bool,
+        stop: Int
+    ) async throws
+
+    func motorSetPosition(
+        port: MotorPort,
+        offset: Int
+    ) async throws
+
+    func motorStart(
+        port: MotorPort,
+        speed: Int,
+        stall: Bool
+    ) async throws
+
+    func motorStop(
+        port: MotorPort,
+        stop: Int
+    ) async throws
+}
+
+
+@MainActor public class Robot: IRobot {
     
     private enum InternalError: Error {
         case commandFailed
     }
     
     public typealias Continuation = CheckedContinuation<Void, Error>
-    
-    public let connectionStatus = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
 
     private var eventsProvider = AsyncStreamProvider<Event>()
     private var continuations = [String : Continuation]()
-    private var cancellables = Set<AnyCancellable>()
     private var eventsTask: Task<Void, Never>?
+    private var connectionStatusTask: Task<Void, Never>?
     
-    private let hub: Hub
+    private let hub: IHub
+    private let connection: IHubConnection
     private let orientation: HubOrientation
     
-    public init(orientation: HubOrientation, hub: Hub) {
+    public init(connection: IHubConnection, hub: Hub, orientation: HubOrientation) {
         self.orientation = orientation
         self.hub = hub
-        hub
-            .connectionStatus
-            .sink { [weak self] connectionStatus in
-                guard let self = self else {
-                    return
-                }
-                self.connectionStatus.send(connectionStatus)
-                if connectionStatus == .connected {
+        self.connection = connection
+        observeConnectionStatus()
+        connection.reconnect()
+    }
+    
+    private func observeConnectionStatus() {
+        connectionStatusTask = Task { [weak self] in
+            guard let self else { return }
+            let connectionStatus = await self.connection.connectionStatus()
+            for await status in connectionStatus {
+                if status == .connected {
                     self.addEventsObserver()
                 } else {
                     self.removeEventsObserver()
                 }
             }
-            .store(in: &cancellables)
-        reconnect()
+        }
     }
     
     private func addEventsObserver() {
@@ -78,7 +148,7 @@ public class Robot {
         eventsProvider.yield(event)
     }
 
-    public func enqueue(request: IRequest) async throws {
+    public func execute(request: IRequest) async throws {
         dispatchPrecondition(condition: .onQueue(.main))
         let id = try await hub.enqueue(request: request)
         return try await withCheckedThrowingContinuation { [weak self] continuation in
@@ -87,12 +157,8 @@ public class Robot {
         }
     }
     
-    public func connect() {
-        hub.connect()
-    }
-    
-    public func reconnect() {
-        hub.reconnect()
+    public func events() async -> AsyncStream<Event> {
+        await eventsProvider.stream()
     }
 }
 
@@ -101,36 +167,30 @@ public class Robot {
 extension Robot {
     
     public func display(image: Bitmap) async throws {
-        try await enqueue(
+        try await execute(
             request: DisplayImage(
                 image: image.oriented(to: orientation)
             )
         )
     }
     
-    public func centerButtonLights(
-        color: Hue,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+    public func centerButtonLights(color: Hue) async throws {
+        try await execute(
             request: CenterButtonLights(
                 color: color
-            ),
-            completion: completion
+            )
         )
     }
     
     public func ultrasonicLights(
         port: MotorPort,
-        lights: (Int, Int, Int, Int),
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        lights: (Int, Int, Int, Int)
+    ) async throws {
+        try await execute(
             request: UltrasonicLightUp(
                 port: port,
                 lights: [lights.0, lights.1, lights.2, lights.3]
-            ),
-            completion: completion
+            )
         )
     }
 }
@@ -145,10 +205,9 @@ extension Robot {
         direction: MotorDirection,
         speed: Int,
         stall: Bool,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MotorGoDirectionToPosition(
                 port: port,
                 position: position,
@@ -156,8 +215,7 @@ extension Robot {
                 speed: speed,
                 stall: stall,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
     
@@ -166,33 +224,29 @@ extension Robot {
         position: Int,
         speed: Int,
         stall: Bool,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MotorGoToRelativePosition(
                 port: port,
                 position: position,
                 speed: speed,
                 stall: stall
-            ),
-            completion: completion
+            )
         )
     }
     
     public func motorPWM(
         port: MotorPort,
         power: Int,
-        stall: Bool,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stall: Bool
+    ) async throws {
+        try await execute(
             request: MotorPWM(
                 port: port,
                 power: power,
                 stall: stall
-            ),
-            completion: completion
+            )
         )
     }
     
@@ -201,18 +255,16 @@ extension Robot {
         degrees: Int,
         speed: Int,
         stall: Bool,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MotorRunForDegrees(
                 port: port,
                 degrees: degrees,
                 speed: speed,
                 stall: stall,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
     
@@ -221,62 +273,54 @@ extension Robot {
         time: Int,
         speed: Int,
         stall: Bool,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MotorRunTimed(
                 port: port,
                 time: time,
                 speed: speed,
                 stall: stall,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
     
     public func motorSetPosition(
         port: MotorPort,
-        offset: Int,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        offset: Int
+    ) async throws {
+        try await execute(
             request: MotorSetPosition(
                 port: port,
                 offset: offset
-            ),
-            completion: completion
+            )
         )
     }
     
     public func motorStart(
         port: MotorPort,
         speed: Int,
-        stall: Bool,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stall: Bool
+    ) async throws {
+        try await execute(
             request: MotorStart(
                 port: port,
                 speed: speed,
                 stall: stall
-            ),
-            completion: completion
+            )
         )
     }
     
     public func motorStop(
         port: MotorPort,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MotorStop(
                 port: port,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
 }

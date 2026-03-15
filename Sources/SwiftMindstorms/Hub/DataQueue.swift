@@ -38,29 +38,30 @@ actor DataQueue: NSObject, StreamDelegate {
     }
     
     func data() async -> AsyncStream<Data> {
-        dataStreamProvider.stream()
+        await dataStreamProvider.stream()
     }
     
     func open() async {
         guard !running else { return }
-        session.outputStream?.schedule(in: .current, forMode: .default)
+        session.outputStream?.schedule(in: RunLoop.main, forMode: .default)
         session.outputStream?.delegate = self
         session.outputStream?.open()
-        session.inputStream?.schedule(in: .current, forMode: .default)
+        session.inputStream?.schedule(in: RunLoop.main, forMode: .default)
         session.inputStream?.delegate = self
         session.inputStream?.open()
     }
     
     func close() async {
         guard running else { return }
+        session.inputStream?.remove(from: RunLoop.main, forMode: .default)
         session.inputStream?.close()
         session.inputStream?.delegate = nil
+        session.outputStream?.remove(from: RunLoop.main, forMode: .default)
         session.outputStream?.close()
         session.outputStream?.delegate = nil
     }
     
     func send(data: Data) async throws {
-        dispatchPrecondition(condition: .onQueue(.main))
         return try await withCheckedThrowingContinuation { [weak self] continuation in
             let command = Command(
                 id: UUID().uuidString,
@@ -73,7 +74,6 @@ actor DataQueue: NSObject, StreamDelegate {
     }
     
     nonisolated func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
-        dispatchPrecondition(condition: .onQueue(.main))
         switch eventCode {
         case .openCompleted:
             print(aStream, ".openCompleted")
@@ -95,7 +95,6 @@ actor DataQueue: NSObject, StreamDelegate {
     }
     
     private func dequeueOutput() {
-        dispatchPrecondition(condition: .onQueue(.main))
         guard let outputStream = session.outputStream else {
             // Output stream not initialized.
             fatalError("Cannot execute command. Session not connected.")
@@ -121,7 +120,6 @@ actor DataQueue: NSObject, StreamDelegate {
     }
 
     private func dequeueInput() {
-        dispatchPrecondition(condition: .onQueue(.main))
         guard let inputStream = session.inputStream else {
             fatalError("Cannot read command. Session not connected.")
             return

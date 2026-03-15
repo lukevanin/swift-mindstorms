@@ -125,7 +125,7 @@ public enum HubConnectionStatus {
 }
 
 public protocol IHubConnection {
-    var status: CurrentValueSubject<HubConnectionStatus, Never> { get }
+    func connectionStatus() async -> AsyncStream<HubConnectionStatus>
     func reconnect()
     func connect()
     func disconnect()
@@ -133,59 +133,44 @@ public protocol IHubConnection {
     func events() async -> AsyncStream<Event>?
 }
 
+
+public protocol IHub: Hub {
+    @discardableResult func enqueue(request: any IRequest) async throws -> String
+    func events() async -> AsyncStream<Event>?
+}
+
 ///
 /// Provides low level communications with the hub.
 ///
-public final class Hub: NSObject {
+public final class Hub: NSObject, IHub {
 
-    public let connectionStatus = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
-
-    private var inputBuffer = Data()
-    private var cancellables = Set<AnyCancellable>()
+    private var connectionStatusTask: Task<Void, Never>?
     private let connection: IHubConnection
 
     public init(connection: IHubConnection) {
         self.connection = connection
         super.init()
-        connection.status
-            .sink { [weak self] status in
-                guard let self = self else {
-                    return
+        observeConnectionStatus()
+    }
+    
+    private func observeConnectionStatus() {
+        connectionStatusTask = Task { [weak self] in
+            guard let self else { return }
+            let connectionStatus = await self.connection.connectionStatus()
+            for await status in connectionStatus {
+                if status == .connected {
+                    try? await self.enqueue(request: ProgramMode(mode: .play))
+                    try? await self.enqueue(request: CenterButtonLights(color: .black))
                 }
-                switch status {
-                case .connected:
-                    Task { [weak self] in
-                        try await self?.enqueue(request: ProgramMode(mode: .play))
-                        try await self?.enqueue(request: CenterButtonLights(color: .black))
-                    }
-                default:
-                    break
-                }
-                self.connectionStatus.send(status)
             }
-            .store(in: &cancellables)
-    }
-    
-    public func reconnect() {
-        print("Reconnecting...")
-        connection.reconnect()
-    }
-    
-    public func connect() {
-        print("Connecting...")
-        connection.connect()
-    }
-    
-    public func disconnect() {
-        print("Disconnectng...")
-        connection.disconnect()
+        }
     }
 
-    @discardableResult public func enqueue<Program>(request: Program) async throws -> String where Program: IRequest {
+    @discardableResult public func enqueue(request: any IRequest) async throws -> String {
         try await connection.send(request: request)
     }
 
-    func events() async -> AsyncStream<Event>? {
+    public func events() async -> AsyncStream<Event>? {
         await connection.events()
     }
 

@@ -28,27 +28,26 @@ public class TankRobot: Robot {
     private let configuration: Configuration
     
     public init(
+        connection: IHubConnection,
         hub: Hub,
         orientation: HubOrientation,
         configuration: Configuration
     ) {
         self.configuration = configuration
-        super.init(orientation: orientation, hub: hub)
+        super.init(connection: connection, hub: hub, orientation: orientation)
     }
 
     public func moveStartSpeeds(
         lhsSpeed: Int,
-        rhsSpeed: Int,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        rhsSpeed: Int
+    ) async throws {
+        try await execute(
             request: MoveStartSpeeds(
                 lspeed: configuration.speed * lhsSpeed,
                 rspeed: configuration.speed * rhsSpeed,
                 lmotor: configuration.lhsMotorPort,
                 rmotor: configuration.rhsMotorPort
-            ),
-            completion: completion
+            )
         )
     }
 
@@ -56,10 +55,9 @@ public class TankRobot: Robot {
         units: Int, // 1 unit = approx. 100mm
         lhsSpeed: Int,
         rhsSpeed: Int,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MoveTankDegrees(
                 degrees: 207 * units,
                 lspeed: configuration.speed * lhsSpeed,
@@ -67,8 +65,7 @@ public class TankRobot: Robot {
                 lmotor: configuration.lhsMotorPort,
                 rmotor: configuration.rhsMotorPort,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
 
@@ -76,10 +73,9 @@ public class TankRobot: Robot {
         degrees: Int,
         lhsSpeed: Int,
         rhsSpeed: Int,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MoveTankDegrees(
                 degrees: degrees,
                 lspeed: configuration.speed * lhsSpeed,
@@ -87,8 +83,7 @@ public class TankRobot: Robot {
                 lmotor: configuration.lhsMotorPort,
                 rmotor: configuration.rhsMotorPort,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
 
@@ -96,10 +91,9 @@ public class TankRobot: Robot {
         time: Int,
         lhsSpeed: Int,
         rhsSpeed: Int,
-        stop: Int = 1,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+        stop: Int = 1
+    ) async throws {
+        try await execute(
             request: MoveTankTime(
                 time: time,
                 lspeed: lhsSpeed,
@@ -107,8 +101,7 @@ public class TankRobot: Robot {
                 lmotor: configuration.lhsMotorPort,
                 rmotor: configuration.rhsMotorPort,
                 stop: stop
-            ),
-            completion: completion
+            )
         )
     }
 }

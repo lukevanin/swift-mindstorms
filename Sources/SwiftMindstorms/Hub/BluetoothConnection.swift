@@ -33,7 +33,7 @@ public final class BluetoothConnection: IHubConnection {
     
     private final class DisconnectedState: AnyState {
         override func enter() {
-            context.status.send(.notConnected)
+            context.statusProvider.yield(.notConnected)
         }
         override func reconnect() {
             guard let session = context.getConnectedSession() else {
@@ -48,7 +48,7 @@ public final class BluetoothConnection: IHubConnection {
     
     private final class ConnectState: AnyState {
         override func enter() {
-            context.status.send(.connecting)
+            context.statusProvider.yield(.connecting)
             context.accessoryManager.showBluetoothAccessoryPicker(
                 withNameFilter: nil,
                 completion: { [weak self] (error) in
@@ -94,7 +94,7 @@ public final class BluetoothConnection: IHubConnection {
         }
         
         override func enter() {
-            context.status.send(.connected)
+            context.statusProvider.yield(.connected)
             Task { [weak dataQueue] in
                 await dataQueue?.open()
             }
@@ -108,6 +108,10 @@ public final class BluetoothConnection: IHubConnection {
         
         @discardableResult override func send(request: IRequest) async throws -> String {
             try await commandQueue.enqueue(request: AnyRequest(request))
+        }
+        
+        override func events() async -> AsyncStream<Event> {
+            await eventQueue.events()
         }
         
         func accessoryDidDisconnect(_ accessory: EAAccessory) {
@@ -149,8 +153,12 @@ public final class BluetoothConnection: IHubConnection {
     }
     
     // MARK: IHubConnection
+
+    private let statusProvider = AsyncStreamProvider<HubConnectionStatus>()
     
-    public let status = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
+    public func connectionStatus() async -> AsyncStream<HubConnectionStatus> {
+        await statusProvider.stream()
+    }
 
     public func reconnect() {
         currentState?.reconnect()

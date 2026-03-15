@@ -10,8 +10,7 @@ import Foundation
 
 final class EventQueue {
 
-    private var eventsStream: AsyncStream<Event>!
-    private var eventsStreamContinuation: AsyncStream<Event>.Continuation?
+    private var eventsProvider = AsyncStreamProvider<Event>()
     private var inputBuffer = Data()
     private var inputBufferTask: Task<Void, Never>?
     
@@ -21,14 +20,11 @@ final class EventQueue {
     init(queue: DataQueue, decoder: JSONDecoder = JSONDecoder()) {
         self.queue = queue
         self.decoder = decoder
-        createEventsStream()
         observeData()
     }
     
-    private func createEventsStream() {
-        eventsStream = AsyncStream { [weak self] continuation in
-            self?.eventsStreamContinuation = continuation
-        }
+    func events() async -> AsyncStream<Event> {
+        await eventsProvider.stream()
     }
     
     private func observeData() {
@@ -43,7 +39,6 @@ final class EventQueue {
     }
     
     private func parseInput() {
-        dispatchPrecondition(condition: .onQueue(.main))
         guard inputBuffer.count > 0 else {
             return
         }
@@ -67,7 +62,7 @@ final class EventQueue {
                 default:
                     break
                 }
-                eventsStreamContinuation?.yield(event)
+                eventsProvider.yield(event)
             }
             else {
                 print("No event", message)
