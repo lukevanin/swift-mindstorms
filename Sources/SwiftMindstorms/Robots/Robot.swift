@@ -11,13 +11,18 @@ import Combine
 
 public class Robot {
     
-    public typealias Completion = (_ success: Bool) -> Void
+    private enum InternalError: Error {
+        case commandFailed
+    }
+    
+    public typealias Continuation = CheckedContinuation<Void, Error>
     
     public let connectionStatus = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
-    public let events = PassthroughSubject<Event, Never>()
 
-    private var completions = [String : Completion]()
+    private var eventsProvider = AsyncStreamProvider<Event>()
+    private var continuations = [String : Continuation]()
     private var cancellables = Set<AnyCancellable>()
+    private var eventsTask: Task<Void, Never>?
     
     private let hub: Hub
     private let orientation: HubOrientation
@@ -26,47 +31,60 @@ public class Robot {
         self.orientation = orientation
         self.hub = hub
         hub
-            .events
-            .sink { [weak self] event in
-                guard let self = self else {
-                    return
-                }
-                self.handleEvent(event)
-            }
-            .store(in: &cancellables)
-        hub
             .connectionStatus
             .sink { [weak self] connectionStatus in
                 guard let self = self else {
                     return
                 }
                 self.connectionStatus.send(connectionStatus)
+                if connectionStatus == .connected {
+                    self.addEventsObserver()
+                } else {
+                    self.removeEventsObserver()
+                }
             }
             .store(in: &cancellables)
-        
         reconnect()
+    }
+    
+    private func addEventsObserver() {
+        eventsTask = Task { [weak self] in
+            guard let self else { return }
+            guard let events = await self.hub.events() else { return }
+            for await event in events {
+                self.handleEvent(event)
+            }
+        }
+    }
+    
+    private func removeEventsObserver() {
+        eventsTask?.cancel()
     }
     
     private func handleEvent(_ event: Event) {
         switch event {
         case .result(let result):
-            if let completion = completions.removeValue(forKey: result.id) {
+            if let continuation = continuations.removeValue(forKey: result.id) {
                 switch result.status {
                 case .done:
-                    completion(true)
+                    continuation.resume()
                 default:
-                    completion(false)
+                    continuation.resume(throwing: InternalError.commandFailed)
                 }
             }
         default:
-            events.send(event)
+            break
         }
+        eventsProvider.yield(event)
     }
 
-    public func enqueue(request: AnyRequest, completion: @escaping Completion) {
+    public func enqueue(request: IRequest) async throws {
         dispatchPrecondition(condition: .onQueue(.main))
-        let id = hub.enqueue(request: request)
-        completions[id] = completion
+        let id = try await hub.enqueue(request: request)
+        return try await withCheckedThrowingContinuation { [weak self] continuation in
+            guard let self else { return }
+            self.continuations[id] = continuation
+        }
     }
     
     public func connect() {
@@ -78,28 +96,15 @@ public class Robot {
     }
 }
 
-// MARK: Utility
-
-extension Robot {
-    
-    public func enqueue<T>(request: T, completion: @escaping Completion) where T: IRequest {
-        enqueue(request: AnyRequest(request), completion: completion)
-    }
-}
-
 // MARK: Display
 
 extension Robot {
     
-    public func display(
-        image: Bitmap,
-        completion: @escaping Completion
-    ) {
-        enqueue(
+    public func display(image: Bitmap) async throws {
+        try await enqueue(
             request: DisplayImage(
                 image: image.oriented(to: orientation)
-            ),
-            completion: completion
+            )
         )
     }
     

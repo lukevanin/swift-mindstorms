@@ -21,8 +21,13 @@ public final class BluetoothConnection: IHubConnection {
         }
         func reconnect() {
         }
-        func send(data: Data) {
-            context.outputQueue.append(data)
+        func disconnect() {
+        }
+        @discardableResult func send(request: IRequest) async throws -> String {
+            fatalError("Not implemented")
+        }
+        func events() async -> AsyncStream<Event> {
+            fatalError("Not implemented")
         }
     }
     
@@ -65,109 +70,53 @@ public final class BluetoothConnection: IHubConnection {
         }
     }
     
-    private final class ConnectedState: AnyState, StreamDelegate, EAAccessoryDelegate {
-        private var cancellables = Set<AnyCancellable>()
+    private final class ConnectedState: AnyState, EAAccessoryDelegate {
+
+        private let commandQueue: CommandQueue
+        private let eventQueue: EventQueue
+        private let dataQueue: DataQueue
         private let session: EASession
         
         init(session: EASession) {
             self.session = session
+            self.dataQueue = DataQueue(session: session)
+            self.commandQueue = CommandQueue(queue: dataQueue)
+            self.eventQueue = EventQueue(queue: dataQueue)
             super.init()
             session.accessory?.delegate = self
-            session.outputStream?.schedule(in: .current, forMode: .default)
-            session.outputStream?.delegate = self
-            session.outputStream?.open()
-            session.inputStream?.schedule(in: .current, forMode: .default)
-            session.inputStream?.delegate = self
-            session.inputStream?.open()
+        }
+        
+        deinit {
+            Task { [weak dataQueue] in
+                await dataQueue?.close()
+            }
+            session.accessory?.delegate = nil
         }
         
         override func enter() {
             context.status.send(.connected)
+            Task { [weak dataQueue] in
+                await dataQueue?.open()
+            }
         }
         
-        override func send(data: Data) {
-            dispatchPrecondition(condition: .onQueue(.main))
-            context.outputQueue.append(data)
-            dequeueOutput()
+        override func disconnect() {
+            Task { [weak dataQueue] in
+                await dataQueue?.close()
+            }
         }
         
-        private func dequeueOutput() {
-            dispatchPrecondition(condition: .onQueue(.main))
-            guard let outputStream = session.outputStream else {
-                // Output stream not initialized.
-                fatalError("Cannot execute command. Session not connected.")
-                return
-            }
-            guard outputStream.hasSpaceAvailable else {
-                // Output buffer is full. Try again later.
-                return
-            }
-            guard context.outputQueue.count > 0 else {
-                // Output queue is empty.
-                return
-            }
-            let data = context.outputQueue.removeFirst()
-//            print(command)
-//            var data = command.data
-//            var outputData
-//            data.append(0x0d) // \r
-            let description = String(data: data, encoding: .utf8) ?? "- data -"
-            print(" BluetoothConnection: Sending: \(description)")
-            data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Void in
-                if let bytes = buffer.bindMemory(to: UInt8.self).baseAddress {
-                    outputStream.write(bytes, maxLength: buffer.count)
-                }
-            }
-        }
-
-        private func dequeueInput() {
-            dispatchPrecondition(condition: .onQueue(.main))
-            guard let inputStream = session.inputStream else {
-                fatalError("Cannot read command. Session not connected.")
-                return
-            }
-            let capacity = 1024
-            let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
-            defer {
-                buffer.deallocate()
-            }
-            while inputStream.hasBytesAvailable == true {
-                let length = inputStream.read(buffer, maxLength: capacity)
-                guard length >= 0 else {
-                    fatalError(inputStream.streamError!.localizedDescription)
-                }
-                let buffer = Data(bytes: buffer, count: length)
-                context.data.send(buffer)
-            }
+        @discardableResult override func send(request: IRequest) async throws -> String {
+            try await commandQueue.enqueue(request: AnyRequest(request))
         }
         
         func accessoryDidDisconnect(_ accessory: EAAccessory) {
             dispatchPrecondition(condition: .onQueue(.main))
             context.gotoDisconnectedState()
         }
-
-        func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
-            dispatchPrecondition(condition: .onQueue(.main))
-            switch eventCode {
-            case .openCompleted:
-                print(aStream, ".openCompleted")
-            case .hasSpaceAvailable:
-                dequeueOutput()
-            case .hasBytesAvailable:
-                dequeueInput()
-            case .endEncountered:
-                print(aStream, ".endEncountered")
-            case .errorOccurred:
-                print(aStream, ".errorOccurred", aStream.streamError?.localizedDescription ?? "- Undefined error -")
-            default:
-                print(aStream, "default")
-            }
-        }
-
     }
         
-    private var outputQueue = [Data]()
-    private var currentState: AnyState?
+    private var currentState: AnyState!
     
     private let accessoryManager = EAAccessoryManager.shared()
     private let notificationCenter = NotificationCenter.default
@@ -191,18 +140,17 @@ public final class BluetoothConnection: IHubConnection {
         gotoState(ConnectedState(session: session))
     }
     
-    private func gotoState(_ state: AnyState?) {
+    private func gotoState(_ state: AnyState) {
         currentState?.exit()
+        currentState?.context = nil
         currentState = state
-        currentState?.context = self
-        currentState?.enter()
+        currentState.context = self
+        currentState.enter()
     }
     
     // MARK: IHubConnection
     
     public let status = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
-
-    public let data = PassthroughSubject<Data, Never>()
 
     public func reconnect() {
         currentState?.reconnect()
@@ -212,8 +160,16 @@ public final class BluetoothConnection: IHubConnection {
         currentState?.connect()
     }
     
-    public func send(data: Data) {
-        currentState?.send(data: data)
+    public func disconnect() {
+        currentState.disconnect()
+    }
+    
+    public func send(request: any IRequest) async throws -> String {
+        try await currentState.send(request: request)
+    }
+    
+    public func events() async -> AsyncStream<Event>? {
+        await currentState.events()
     }
     
     // MARK: EAAccessoryManager

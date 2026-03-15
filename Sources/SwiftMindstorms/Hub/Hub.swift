@@ -126,10 +126,11 @@ public enum HubConnectionStatus {
 
 public protocol IHubConnection {
     var status: CurrentValueSubject<HubConnectionStatus, Never> { get }
-    var data: PassthroughSubject<Data, Never> { get }
     func reconnect()
     func connect()
-    func send(data: Data)
+    func disconnect()
+    @discardableResult func send(request: IRequest) async throws -> String
+    func events() async -> AsyncStream<Event>?
 }
 
 ///
@@ -138,7 +139,6 @@ public protocol IHubConnection {
 public final class Hub: NSObject {
 
     public let connectionStatus = CurrentValueSubject<HubConnectionStatus, Never>(.notConnected)
-    public let events = PassthroughSubject<Event, Never>()
 
     private var inputBuffer = Data()
     private var cancellables = Set<AnyCancellable>()
@@ -154,21 +154,14 @@ public final class Hub: NSObject {
                 }
                 switch status {
                 case .connected:
-                    self.enqueue(request: ProgramMode(mode: .play))
-                    self.enqueue(request: CenterButtonLights(color: .black))
+                    Task { [weak self] in
+                        try await self?.enqueue(request: ProgramMode(mode: .play))
+                        try await self?.enqueue(request: CenterButtonLights(color: .black))
+                    }
                 default:
                     break
                 }
                 self.connectionStatus.send(status)
-            }
-            .store(in: &cancellables)
-        connection.data
-            .sink { [weak self] data in
-                guard let self = self else {
-                    return
-                }
-                self.inputBuffer.append(data)
-                self.parseInput()
             }
             .store(in: &cancellables)
     }
@@ -182,56 +175,18 @@ public final class Hub: NSObject {
         print("Connecting...")
         connection.connect()
     }
-
-    @discardableResult public func enqueue<Program>(request: Program) -> String where Program: IRequest {
-        enqueue(request: AnyRequest(request))
-    }
-
-    @discardableResult public func enqueue(request: AnyRequest) -> String {
-        dispatchPrecondition(condition: .onQueue(.main))
-        let encoder = JSONEncoder()
-        let command = Command(p: request)
-        var data = try! encoder.encode(command)
-        data.append(0x0d) // \r
-        connection.send(data: data)
-        return command.i
-    }
     
-    private func parseInput() {
-        dispatchPrecondition(condition: .onQueue(.main))
-        guard inputBuffer.count > 0 else {
-            return
-        }
-        while let index = inputBuffer.firstIndex(of: 0x0d) {
-            let endIndex = index + 1
-            let fragment = inputBuffer[inputBuffer.startIndex ..< endIndex]
-            let message = String(data: fragment, encoding: .utf8)!
-            parseMessage(message)
-            inputBuffer.removeFirst(fragment.count)
-        }
+    public func disconnect() {
+        print("Disconnectng...")
+        connection.disconnect()
     }
-    
-    private func parseMessage(_ message: String) {
-        let data = message.data(using: .utf8)!
-        do {
-            let decoder = JSONDecoder()
-            let container = try decoder.decode(EventMessage.self, from: data)
-            if let event = container.event {
-                switch event {
-                case .battery(_), .result(_), .runtimeError(_):
-                    print(message)
-                default:
-                    break
-                }
-                events.send(event)
-            }
-            else {
-                print("No event", message)
-            }
-        }
-        catch {
-            print(error.localizedDescription)
-             print(message)
-        }
+
+    @discardableResult public func enqueue<Program>(request: Program) async throws -> String where Program: IRequest {
+        try await connection.send(request: request)
     }
+
+    func events() async -> AsyncStream<Event>? {
+        await connection.events()
+    }
+
 }
