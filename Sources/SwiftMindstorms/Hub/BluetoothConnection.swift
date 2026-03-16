@@ -11,62 +11,69 @@ import ExternalAccessory
 
 public final class BluetoothConnection: IHubConnection {
     
+    enum InternalError: Error {
+        case notConnected
+    }
+    
     private class AnyState: NSObject {
         unowned var context: BluetoothConnection!
-        func enter() {
+        func enter() async {
         }
         func exit() {
         }
-        func connect() {
+        func connect() async {
         }
-        func reconnect() {
+        func reconnect() async {
         }
-        func disconnect() {
+        func disconnect() async {
         }
-        @discardableResult func send(request: IRequest) async throws -> String {
-            fatalError("Not implemented")
+        func send(command: Command) async throws {
+            throw InternalError.notConnected
         }
-        func events() async -> AsyncStream<Event> {
-            fatalError("Not implemented")
+        func events() async throws -> AsyncStream<Event> {
+            throw InternalError.notConnected
         }
     }
     
     private final class DisconnectedState: AnyState {
-        override func enter() {
+        override func enter()  async{
             context.statusProvider.yield(.notConnected)
         }
-        override func reconnect() {
+        override func reconnect() async {
             guard let session = context.getConnectedSession() else {
                 return
             }
-            context.gotoConnectedState(session: session)
+            await context.gotoConnectedState(session: session)
         }
-        override func connect() {
-            context.gotoConnectState()
+        override func connect() async {
+            await context.gotoConnectState()
         }
     }
     
     private final class ConnectState: AnyState {
-        override func enter() {
+        override func enter() async {
             context.statusProvider.yield(.connecting)
             context.accessoryManager.showBluetoothAccessoryPicker(
                 withNameFilter: nil,
                 completion: { [weak self] (error) in
-                    guard let self = self else {
-                        return
+                    Task { [weak self] in
+                        await self?.handleAccessorySelected(error :error)
                     }
-                    guard let session = self.context.getConnectedSession() else {
-                        if let error = error {
-                            let pickerError = EABluetoothAccessoryPickerError(_nsError: error as NSError)
-                            print(error)
-                            print(pickerError)
-                        }
-                        self.context.gotoDisconnectedState()
-                        return
-                    }
-                    self.context.gotoConnectedState(session: session)
                 }
             )
+        }
+        
+        private func handleAccessorySelected(error: Error?) async {
+            guard let session = self.context.getConnectedSession() else {
+                if let error = error {
+                    let pickerError = EABluetoothAccessoryPickerError(_nsError: error as NSError)
+                    print(error)
+                    print(pickerError)
+                }
+                await context.gotoDisconnectedState()
+                return
+            }
+            await context.gotoConnectedState(session: session)
         }
     }
     
@@ -77,9 +84,9 @@ public final class BluetoothConnection: IHubConnection {
         private let dataQueue: DataQueue
         private let session: EASession
         
-        init(session: EASession) {
+        init(session: EASession) async {
             self.session = session
-            self.dataQueue = DataQueue(session: session)
+            self.dataQueue = await DataQueue(session: session)
             self.commandQueue = CommandQueue(queue: dataQueue)
             self.eventQueue = EventQueue(queue: dataQueue)
             super.init()
@@ -93,21 +100,17 @@ public final class BluetoothConnection: IHubConnection {
             session.accessory?.delegate = nil
         }
         
-        override func enter() {
+        override func enter() async {
             context.statusProvider.yield(.connected)
-            Task { [weak dataQueue] in
-                await dataQueue?.open()
-            }
+            await dataQueue.open()
         }
         
-        override func disconnect() {
-            Task { [weak dataQueue] in
-                await dataQueue?.close()
-            }
+        override func disconnect() async {
+            await dataQueue.close()
         }
         
-        @discardableResult override func send(request: IRequest) async throws -> String {
-            try await commandQueue.enqueue(request: AnyRequest(request))
+        @discardableResult override func send(command: Command) async throws {
+            try await commandQueue.enqueue(command: command)
         }
         
         override func events() async -> AsyncStream<Event> {
@@ -116,7 +119,9 @@ public final class BluetoothConnection: IHubConnection {
         
         func accessoryDidDisconnect(_ accessory: EAAccessory) {
             dispatchPrecondition(condition: .onQueue(.main))
-            context.gotoDisconnectedState()
+            Task { [weak self] in
+                await self?.context.gotoDisconnectedState()
+            }
         }
     }
         
@@ -127,21 +132,25 @@ public final class BluetoothConnection: IHubConnection {
     private let protocolString = "com.lego.les"
 
     public init() {
-        gotoDisconnectedState()
+        currentState = DisconnectedState()
+        currentState.context = self
+        Task { [weak self] in
+            await self?.currentState.enter()
+        }
     }
     
     // MARK: State machine
     
-    private func gotoDisconnectedState() {
+    private func gotoDisconnectedState() async {
         gotoState(DisconnectedState())
     }
     
-    private func gotoConnectState() {
+    private func gotoConnectState() async {
         gotoState(ConnectState())
     }
     
-    private func gotoConnectedState(session: EASession) {
-        gotoState(ConnectedState(session: session))
+    private func gotoConnectedState(session: EASession) async {
+        await gotoState(ConnectedState(session: session))
     }
     
     private func gotoState(_ state: AnyState) {
@@ -149,7 +158,9 @@ public final class BluetoothConnection: IHubConnection {
         currentState?.context = nil
         currentState = state
         currentState.context = self
-        currentState.enter()
+        Task { [weak self] in
+            await self?.currentState.enter()
+        }
     }
     
     // MARK: IHubConnection
@@ -160,24 +171,24 @@ public final class BluetoothConnection: IHubConnection {
         await statusProvider.stream()
     }
 
-    public func reconnect() {
-        currentState?.reconnect()
+    public func reconnect() async {
+        await currentState?.reconnect()
     }
     
-    public func connect() {
-        currentState?.connect()
+    public func connect() async {
+        await currentState?.connect()
     }
     
-    public func disconnect() {
-        currentState.disconnect()
+    public func disconnect() async {
+        await currentState.disconnect()
     }
     
-    public func send(request: any IRequest) async throws -> String {
-        try await currentState.send(request: request)
+    public func send(command: Command) async throws {
+        try await currentState.send(command: command)
     }
     
-    public func events() async -> AsyncStream<Event>? {
-        await currentState.events()
+    public func events() async throws -> AsyncStream<Event> {
+        try await currentState.events()
     }
     
     // MARK: EAAccessoryManager

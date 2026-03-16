@@ -9,7 +9,7 @@ import Foundation
 import ExternalAccessory
 
 
-actor DataQueue: NSObject, StreamDelegate {
+@MainActor final class DataQueue: NSObject, StreamDelegate {
     
     struct Command {
         let id: String
@@ -20,7 +20,6 @@ actor DataQueue: NSObject, StreamDelegate {
     private let dataStreamProvider = AsyncStreamProvider<Data>()
     
     private var queue: [Command] = []
-    private var inProgress: [String: Command] = [:]
     private var running: Bool = false
     
     private let session: EASession
@@ -43,6 +42,7 @@ actor DataQueue: NSObject, StreamDelegate {
     
     func open() async {
         guard !running else { return }
+        dispatchPrecondition(condition: .onQueue(.main))
         session.outputStream?.schedule(in: RunLoop.main, forMode: .default)
         session.outputStream?.delegate = self
         session.outputStream?.open()
@@ -53,6 +53,7 @@ actor DataQueue: NSObject, StreamDelegate {
     
     func close() async {
         guard running else { return }
+        dispatchPrecondition(condition: .onQueue(.main))
         session.inputStream?.remove(from: RunLoop.main, forMode: .default)
         session.inputStream?.close()
         session.inputStream?.delegate = nil
@@ -94,7 +95,8 @@ actor DataQueue: NSObject, StreamDelegate {
         }
     }
     
-    private func dequeueOutput() {
+    @MainActor private func dequeueOutput() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard let outputStream = session.outputStream else {
             // Output stream not initialized.
             fatalError("Cannot execute command. Session not connected.")
@@ -109,17 +111,18 @@ actor DataQueue: NSObject, StreamDelegate {
             return
         }
         let command = queue.removeFirst()
-        inProgress[command.id] = command
         let description = String(data: command.data, encoding: .utf8) ?? "- data -"
-        print(" BluetoothConnection: Sending: \(description)")
+        print("DataQueue: Output: \(description)")
         command.data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Void in
             if let bytes = buffer.bindMemory(to: UInt8.self).baseAddress {
                 outputStream.write(bytes, maxLength: buffer.count)
             }
+            command.continuation.resume()
         }
     }
 
     private func dequeueInput() {
+        dispatchPrecondition(condition: .onQueue(.main))
         guard let inputStream = session.inputStream else {
             fatalError("Cannot read command. Session not connected.")
             return
@@ -135,6 +138,8 @@ actor DataQueue: NSObject, StreamDelegate {
                 fatalError(inputStream.streamError!.localizedDescription)
             }
             let buffer = Data(bytes: buffer, count: length)
+            let description = String(data: buffer, encoding: .utf8) ?? "- invalid data -"
+//            print("DataQueue: Input: \(description)")
             dataStreamProvider.yield(buffer)
         }
     }

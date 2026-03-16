@@ -18,8 +18,7 @@ final class CommandQueue {
         self.encoder = encoder
     }
     
-    @discardableResult public func enqueue(request: AnyRequest) async throws -> String {
-        let command = Command(p: request)
+    @discardableResult public func enqueue(command: Command) async throws -> String {
         var data = try encoder.encode(command)
         data.append(0x0d) // \r
         try await queue.send(data: data)

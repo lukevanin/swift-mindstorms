@@ -43,7 +43,7 @@ func nextId() -> String {
     return String(format: "%05d", lastId)
 }
 
-struct Command: Encodable {
+public struct Command: Encodable {
     let i: String
     let m: String
     let p: AnyRequest?
@@ -126,17 +126,24 @@ public enum HubConnectionStatus {
 
 public protocol IHubConnection {
     func connectionStatus() async -> AsyncStream<HubConnectionStatus>
-    func reconnect()
-    func connect()
-    func disconnect()
-    @discardableResult func send(request: IRequest) async throws -> String
-    func events() async -> AsyncStream<Event>?
+    func reconnect() async
+    func connect() async
+    func disconnect() async
+    @discardableResult func send(command: Command) async throws
+    func events() async throws -> AsyncStream<Event>
 }
 
 
 public protocol IHub: Hub {
-    @discardableResult func enqueue(request: any IRequest) async throws -> String
-    func events() async -> AsyncStream<Event>?
+    func enqueue(command: Command) async throws
+    func events() async throws -> AsyncStream<Event>
+}
+
+extension IHub {
+    func enqueue(request: IRequest) async throws {
+        let command = Command(p: AnyRequest(request))
+        try await enqueue(command: command)
+    }
 }
 
 ///
@@ -166,12 +173,12 @@ public final class Hub: NSObject, IHub {
         }
     }
 
-    @discardableResult public func enqueue(request: any IRequest) async throws -> String {
-        try await connection.send(request: request)
+    @discardableResult public func enqueue(command: Command) async throws {
+        try await connection.send(command: command)
     }
 
-    public func events() async -> AsyncStream<Event>? {
-        await connection.events()
+    public func events() async throws -> AsyncStream<Event> {
+        try await connection.events()
     }
 
 }

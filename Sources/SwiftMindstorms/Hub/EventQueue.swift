@@ -58,19 +58,20 @@ final class EventQueue {
             if let event = container.event {
                 switch event {
                 case .battery(_), .result(_), .runtimeError(_):
-                    print(message)
+                    print("EventQueue > parseMessage: message=\(message)")
+                    print("EventQueue > parseMessage: event=\(event)")
                 default:
                     break
                 }
                 eventsProvider.yield(event)
             }
             else {
-                print("No event", message)
+                print("EventQueue > parseMessage: no event")
             }
         }
         catch {
-            print(error.localizedDescription)
-            print(message)
+            print("EventQueue > parseMessage: message=\(message)")
+            print("EventQueue > parseMessage: \(error.localizedDescription)")
         }
     }
 }

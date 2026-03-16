@@ -100,7 +100,9 @@ public protocol IRobot {
         self.hub = hub
         self.connection = connection
         observeConnectionStatus()
-        connection.reconnect()
+        Task { [weak self] in
+            await self?.connection.reconnect()
+        }
     }
     
     private func observeConnectionStatus() {
@@ -120,7 +122,7 @@ public protocol IRobot {
     private func addEventsObserver() {
         eventsTask = Task { [weak self] in
             guard let self else { return }
-            guard let events = await self.hub.events() else { return }
+            guard let events = try? await self.hub.events() else { return }
             for await event in events {
                 self.handleEvent(event)
             }
@@ -134,6 +136,7 @@ public protocol IRobot {
     private func handleEvent(_ event: Event) {
         switch event {
         case .result(let result):
+            print("Robot > handleEvent: received result \(result.id) \(result)")
             if let continuation = continuations.removeValue(forKey: result.id) {
                 switch result.status {
                 case .done:
@@ -149,11 +152,21 @@ public protocol IRobot {
     }
 
     public func execute(request: IRequest) async throws {
-        dispatchPrecondition(condition: .onQueue(.main))
-        let id = try await hub.enqueue(request: request)
-        return try await withCheckedThrowingContinuation { [weak self] continuation in
+        let command = Command(p: AnyRequest(request))
+        let id = command.i
+        print("Robot > execute: enqueueing command \(id)")
+        try await withCheckedThrowingContinuation { [weak self] continuation in
             guard let self else { return }
             self.continuations[id] = continuation
+            Task {
+                do {
+                    try await hub.enqueue(command: command)
+                } catch {
+                    if let continuation = self.continuations.removeValue(forKey: id) {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         }
     }
     
